@@ -46,9 +46,11 @@ typedef struct {
     int cols;
 } Index;
 
-void printImage(Image image);
+void printImage(Image *image);
 
-void printIndexBins(Index index);
+void printIndexBins(Index *index);
+
+void rasterize(Index *index, Image *image);
 
 void addPointToIndex(Index *index, Point3D *point);
 

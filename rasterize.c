@@ -9,7 +9,8 @@
  *            LONG / LAT                 
  *        ^                                    0,0 |             w-1,0
  *    lat |    lu-----+                      ------+------------------
- *        |    |      |        ======>             |
+ *        |    |a     |        ======>             |
+ *        |    |     b|                            |
  *        |    +-----rl                            |
  *        |                                        |
  *    ----+----------------->                0,h-1 |
@@ -48,7 +49,7 @@ int main(int argc, char **argv) {
     image.rows = rows;
     image.cols = cols;
 
-    // nollaus
+    // Initialize arrays
     for (j=0; j<rows; j++) {
         for (i=0; i<cols; i++) {
             *(index.nodes+(j*cols)+i) = 0;
@@ -59,19 +60,52 @@ int main(int argc, char **argv) {
     // data
     readPointsFromFile("sample.txt", &index);
 
-    // FIXME: muistin vapautus
-    printIndexBins(index);
+    printIndexBins(&index);
 
-    printImage(image);
+    rasterize(&index, &image);
+
+    printImage(&image);
 
     free(image.pixels);
     free(index.nodes);
     return 0;
 }
 
+// float valueUsingKNN(Index *index, int *row, int *col) {
+//     int k = 5; // k-max
+//     int k_used = 0;
+//     float nearest[5];
+// 
+//     int i;
+//     float ksum = 0f;
+//     for(i=0; i<k_used; i++) {
+//         ksum += nearest[i];
+//     }
+//     return ksum/(float)k_used;
+// }
+
+float useNearest(Index *index, int *row, int *col) {
+    printf("Not implemented!\n");
+    return EMPTY_VAL;    
+}
+
+void rasterize(Index *index, Image *image) {
+    printf("Creating raster image from indexed points.\n");
+
+    int i,j;
+    for (j=0; j < index->rows; j++) {
+        for (i=0; i < index->cols; i++) {
+            *(image->pixels+(j*index->cols)+i) = useNearest(index, &j, &i);
+        }
+    }
+
+    printf(END_SECT);
+}
+
 void calcImageSize(TaskInfo info, int *rows, int *cols) {
     assert(info.lu_long < info.rl_long && "Longitudes switched.");
     assert(info.lu_lat  > info.rl_lat  && "Latitudes switched.");
+
     printf("Calculating image size ...\n");
     printf("    Image extents: left  upper corner %6.2f %6.2f\n", info.lu_long, info.lu_lat);
     printf("                   right lower corner %6.2f %6.2f\n", info.rl_long, info.rl_lat);
@@ -88,22 +122,22 @@ void calcImageSize(TaskInfo info, int *rows, int *cols) {
     printf(END_SECT);
 }
 
-int depth(int d, PointNode *node) {
+int binDepth(int d, PointNode *node) {
     if(node == 0) {
         return d;
     } else {
-        return depth(d+1, node->next);
+        return binDepth(d+1, node->next);
     }
 }
 
 // Prints out Index struct's bin usages.
-void printIndexBins(Index index) {
-    printf("Printing number of links per index bins.\n\n");
+void printIndexBins(Index *index) {
+    printf("Printing out index bin depths (number of links per bin):\n\n");
 
     int i,j,d;
-    for (j=0; j<index.rows; j++) {
-        for (i=0; i<index.cols; i++) {
-            d = depth(0, *(index.nodes + index.cols*j + i));
+    for (j=0; j<index->rows; j++) {
+        for (i=0; i<index->cols; i++) {
+            d = binDepth(0, *(index->nodes + index->cols*j + i));
             printf("%d  ", d);
         }
         printf("\n");
@@ -112,13 +146,13 @@ void printIndexBins(Index index) {
     printf(END_SECT);
 }
 
-void printImage(Image im) {
+void printImage(Image *image) {
     printf("Printing rasterized image:\n\n");
 
     int i,j;
-    for (j=0; j<im.rows; j++) {
-        for (i=0; i<im.cols; i++) {
-            printf("%04.2f  ", *(im.pixels+(j*im.cols)+im.rows));
+    for (j=0; j<image->rows; j++) {
+        for (i=0; i<image->cols; i++) {
+            printf("%04.2f  ", *(image->pixels+(j*image->cols)+i));
         }
         printf("\n");
     }
@@ -140,17 +174,17 @@ void readPointsFromFile(char *filename, Index *index) {
         p.z = rz;
         addPointToIndex(index, &p);
 
-        if(n < 10) {
+        if(n <= 10) {
             printf("x=%04.2f y=%04.2f z=%04.2f\n", rx, ry, rz);
         } else if (n == 11) {
             printf("...\n");
         } else {
             // Gradually increase shown amounts.
-            if (n <= 100 && n % 10) { printf("%d.. ", n); }
-            else if (n > 100    && n <= 1000    && n % 100   ) { printf("%d.. ", n); }
-            else if (n > 1000   && n <= 10000   && n % 1000  ) { printf("%d.. ", n); }
-            else if (n > 10000  && n <= 100000  && n % 10000 ) { printf("%d.. ", n); }
-            else if (n > 100000 && n <= 1000000 && n % 100000) { printf("%d.. ", n); }
+            if (n <= 100 && n % 10 == 0) { printf("%d.. ", n); }
+            else if (n > 100    && n <= 1000    && n % 100    == 0) { printf("%d.. ", n); }
+            else if (n > 1000   && n <= 10000   && n % 1000   == 0) { printf("%d.. ", n); }
+            else if (n > 10000  && n <= 100000  && n % 10000  == 0) { printf("%d.. ", n); }
+            else if (n > 100000 && n <= 1000000 && n % 100000 == 0) { printf("%d.. ", n); }
         }
         n++;
     }
@@ -161,7 +195,6 @@ void readPointsFromFile(char *filename, Index *index) {
 
     printf(END_SECT);
 }
-
 
 
 
@@ -186,7 +219,7 @@ void addToBin(PointNode **current, Point3D* point) {
         PointNode *i = *current;
         while(1) {
             if (i->next == NULL) break;
-            i = (*current)->next;
+            i = i->next;
         }
         i->next = new;
     }
@@ -196,5 +229,5 @@ void transformPoint(TaskInfo info, Point3D *p, int *row, int *col) {
     *row = floor((p->x - info.lu_long) / info.gsd);
     *col = floor((p->y - info.rl_lat) / info.gsd);
     assert(*row >= 0 && *col >= 0 && "Row number positive.");
-    printf("  Transformed point %4.2f %4.2f %4.2f to row=%d col=%d.\n", p->x, p->y, p->z, *row, *col);
+    // printf("    Point x=%4.2f y=%4.2f z=%4.2f -> row=%d col=%d.\n", p->x, p->y, p->z, *row, *col);
 }
