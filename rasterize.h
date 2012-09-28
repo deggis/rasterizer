@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <assert.h>
 
 #define EMPTY_VAL 0.0f
 
@@ -19,9 +20,9 @@ typedef struct {
 //     double y;
 // } Point2D;
 
-typedef struct {
+typedef struct PointNode_t {
     Point3D p;
-    struct PointNode *next;
+    struct PointNode_t *next;
 } PointNode;
 
 typedef struct {
@@ -47,8 +48,16 @@ typedef struct {
 
 void printImage(Image image);
 
-void addPoint(Index index, Point3D *point);
+void printIndexBins(Index index);
 
-// void transform(TaskInfo info, Point3D *p, int *row, int *col);
+void addPointToIndex(Index *index, Point3D *point);
+
+void addToBin(PointNode **current, Point3D* point);
+
+void readPointsFromFile(char *filename, Index *index);
+
+void transformPoint(TaskInfo info, Point3D *p, int *row, int *col);
+
+void calcImageSize(TaskInfo info, int *rows, int *cols);
 
 #endif
