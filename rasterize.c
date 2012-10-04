@@ -29,18 +29,18 @@ int main(int argc, char **argv) {
     printf("Welcome to Rasterizer 3000.\n");
     printf("===========================\n\n");
 
-    TaskInfo info = { 0.0, 5.0, 5.0, 0.0, 1.0 };
+    Extents extents = { 0.0, 5.0, 5.0, 0.0, 1.0 };
 
     int rows, //9175,
         cols, //6814,
         i,
         j;
 
-    calcImageSize(info, &rows, &cols);
+    calcImageSize(&extents, &rows, &cols);
 
     Index index;
     index.nodes = malloc(rows*cols*sizeof(PointNode *));
-    index.info = info;
+    index.extents = &extents;
     index.rows = rows;
     index.cols = cols;
 
@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
     image.pixels = malloc(rows*cols*sizeof(float));
     image.rows = rows;
     image.cols = cols;
+    image.extents = &extents;
 
     // Initialize arrays
     for (j=0; j<rows; j++) {
@@ -84,9 +85,52 @@ int main(int argc, char **argv) {
 //     return ksum/(float)k_used;
 // }
 
-float useNearest(Index *index, int *row, int *col) {
-    printf("Not implemented!\n");
-    return EMPTY_VAL;    
+double dist(double x1, double y1, double x2, double y2) {
+    return sqrt( pow(x1-x2, 2) + pow(y1-y2, 2) );
+}
+
+int blockDist(int x1, int y1, int x2, int y2) {
+    return ceil( sqrt( pow(x1-x2, 2) + pow(y1-y2, 2) ) );
+}
+
+Point3D* useNearest(Index *index, Point3D *pixel_rep) {
+    Point3D *nearest = NULL;
+    int i,j,
+        d=1,
+        row, col;
+
+    point2Index(index->extents, pixel_rep, &row, &col);
+
+    int minj = MAX(0, row-d),
+        maxj = MIN(row+d, index->rows - 1),
+        mini = MAX(0, col-d),
+        maxi = MIN(col+d, index->cols - 1);
+
+    double shortestDist = 100000000000;
+
+    // Go through relevant bins
+    for (j = minj; j <= maxj; j++) {
+        for (i = mini; i <= maxi; i++) {
+
+            // Go through one bin
+            PointNode *node = *(index->nodes+j*(index->cols)+i);
+            while (node != NULL) {
+
+                Point3D *current = &(node->p);
+                double currentDist = dist(pixel_rep->x, pixel_rep->y, current->x, current->y);
+
+                if ( shortestDist > currentDist ) {
+                    nearest = current;
+                    shortestDist = currentDist;
+                }
+
+                node = node->next;
+            }
+        }
+    }
+    printf("row=%d col=%d ... mini=%d maxi=%d minj=%d maxj=%d\n", row, col, mini, maxi, minj, maxj);
+
+    return nearest;
 }
 
 void rasterize(Index *index, Image *image) {
@@ -95,27 +139,34 @@ void rasterize(Index *index, Image *image) {
     int i,j;
     for (j=0; j < index->rows; j++) {
         for (i=0; i < index->cols; i++) {
-            *(image->pixels+(j*index->cols)+i) = useNearest(index, &j, &i);
+            Point3D pixel_rep;
+            pixel2Point(image, &j, &i, &pixel_rep);
+            Point3D *nearest = useNearest(index, &pixel_rep);
+            if(nearest != NULL) {
+                *(image->pixels+(j*index->cols)+i) = nearest->z;
+            } else {
+                *(image->pixels+(j*index->cols)+i) = EMPTY_VAL;
+            }
         }
     }
 
     printf(END_SECT);
 }
 
-void calcImageSize(TaskInfo info, int *rows, int *cols) {
-    assert(info.lu_long < info.rl_long && "Longitudes switched.");
-    assert(info.lu_lat  > info.rl_lat  && "Latitudes switched.");
+void calcImageSize(Extents *extents, int *rows, int *cols) {
+    assert(extents->lu_long < extents->rl_long && "Longitudes switched.");
+    assert(extents->lu_lat  > extents->rl_lat  && "Latitudes switched.");
 
     printf("Calculating image size ...\n");
-    printf("    Image extents: left  upper corner %6.2f %6.2f\n", info.lu_long, info.lu_lat);
-    printf("                   right lower corner %6.2f %6.2f\n", info.rl_long, info.rl_lat);
-    printf("    GSD: %6.2f metres.\n\n", info.gsd);
+    printf("    Image extents: left  upper corner %6.2f %6.2f\n", extents->lu_long, extents->lu_lat);
+    printf("                   right lower corner %6.2f %6.2f\n", extents->rl_long, extents->rl_lat);
+    printf("    GSD: %6.2f metres.\n\n", extents->gsd);
 
-    double hor = info.rl_long - info.lu_long;
-    double ver = info.lu_lat  - info.rl_lat;
+    double hor = extents->rl_long - extents->lu_long;
+    double ver = extents->lu_lat  - extents->rl_lat;
 
-    *rows = floor(hor / info.gsd);
-    *cols = floor(ver / info.gsd);
+    *rows = floor(hor / extents->gsd);
+    *cols = floor(ver / extents->gsd);
 
     printf("    Horizontal extent: %6.2f metres => %d cols.\n", hor, *cols);
     printf("    Vertical   extent: %6.2f metres => %d rows.\n", ver, *rows);
@@ -200,7 +251,7 @@ void readPointsFromFile(char *filename, Index *index) {
 
 void addPointToIndex(Index *index, Point3D *point) {
     int col,row;
-    transformPoint(index->info, point, &row, &col);
+    point2Index(index->extents, point, &row, &col);
     assert(row < (index->rows) && col < (index->cols) && "col,row < cols,rows");
     PointNode **binstart = (index->nodes)+(row*index->cols)+col;
     addToBin(binstart, point);
@@ -225,9 +276,19 @@ void addToBin(PointNode **current, Point3D* point) {
     }
 }
 
-void transformPoint(TaskInfo info, Point3D *p, int *row, int *col) {
-    *row = floor((p->x - info.lu_long) / info.gsd);
-    *col = floor((p->y - info.rl_lat) / info.gsd);
+void point2Index(Extents *extents, Point3D *p, int *row, int *col) {
+    *row = floor((p->x - extents->lu_long) / extents->gsd);
+    *col = floor((p->y - extents->rl_lat) / extents->gsd);
     assert(*row >= 0 && *col >= 0 && "Row number positive.");
     // printf("    Point x=%4.2f y=%4.2f z=%4.2f -> row=%d col=%d.\n", p->x, p->y, p->z, *row, *col);
+}
+
+void pixel2Point(Image *image, int *row, int *col, Point3D *point) {
+    float col_rel = (float)*col / image->cols;
+    float row_rel = (float)*row / image->rows;
+    Extents *extents = image->extents;
+    point->x = extents->lu_long + (extents->rl_long - extents->lu_long)*col_rel;
+    point->y = extents->lu_lat  + (extents->rl_lat  - extents->lu_lat )*row_rel;
+    point->z = EMPTY_VAL;
+    printf("pixel2Point: col=%d row=%d -> x=%f y=%f\n", *col, *row, point->x, point->y);
 }

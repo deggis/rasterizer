@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
+#include <sys/param.h>
 
 #define EMPTY_VAL 0.0f
 
@@ -31,17 +32,18 @@ typedef struct {
     double rl_long;
     double rl_lat;
     double gsd; // in metres
-} TaskInfo;
+} Extents;
 
 typedef struct {
     float *pixels;
     int rows;
     int cols;
+    Extents *extents;
 } Image;
 
 typedef struct {
     PointNode **nodes;
-    TaskInfo info;
+    Extents *extents;
     int rows;
     int cols;
 } Index;
@@ -58,8 +60,10 @@ void addToBin(PointNode **current, Point3D* point);
 
 void readPointsFromFile(char *filename, Index *index);
 
-void transformPoint(TaskInfo info, Point3D *p, int *row, int *col);
+void calcImageSize(Extents *extents, int *rows, int *cols);
 
-void calcImageSize(TaskInfo info, int *rows, int *cols);
+void point2Index(Extents *extents, Point3D *point, int *row, int *col);
+
+void pixel2Point(Image *image, int *row, int *col, Point3D *point);
 
 #endif
