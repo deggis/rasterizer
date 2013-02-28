@@ -29,18 +29,18 @@ int main(int argc, char **argv) {
     printf("Welcome to Rasterizer 3000.\n");
     printf("===========================\n\n");
 
-    Extents extents = { 0.0, 5.0, 5.0, 0.0, 1.0 };
+    Config config;
 
     int rows, //9175,
         cols, //6814,
         i,
         j;
 
-    calcImageSize(&extents, &rows, &cols);
+    calcImageSize(&config, &rows, &cols);
 
     Index index;
     index.nodes = malloc(rows*cols*sizeof(PointNode *));
-    index.extents = &extents;
+    index.config = &config;
     index.rows = rows;
     index.cols = cols;
 
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
     image.pixels = malloc(rows*cols*sizeof(float));
     image.rows = rows;
     image.cols = cols;
-    image.extents = &extents;
+    image.config = &config;
 
     // Initialize arrays
     for (j=0; j<rows; j++) {
@@ -69,6 +69,41 @@ int main(int argc, char **argv) {
 
     free(image.pixels);
     free(index.nodes);
+    return 0;
+}
+
+int readConfig(char *filename, Config *config) {
+    printf("Reading config from file: %s\n\n", filename);
+    FILE *file = fopen(filename, "r");
+    float rx,ry,rz;
+    int n = 0;
+
+    if ( fscanf(file, "lu_long=%d", &(config->lu_long)) != 1) {
+        printf("Could not read lu_long from config.");
+        return 1;
+    }
+    if ( fscanf(file, "lu_lat=%d", &(config->lu_lat)) != 1) {
+        printf("Could not read lu_lat from config.");
+        return 1;
+    }
+    if ( fscanf(file, "rl_long=%d", &(config->rl_long)) != 1) {
+        printf("Could not read rl_long from config.");
+        return 1;
+    }
+    if ( fscanf(file, "rl_lat=%d", &(config->rl_lat)) != 1) {
+        printf("Could not read rl_lat from config.");
+        return 1;
+    }
+    if ( fscanf(file, "gsd=%d", &(config->gsd)) != 1) {
+        printf("Could not read gsd from config.");
+        return 1;
+    }
+
+    fclose(file);
+
+    printf("\nDone reading config.\n", n);
+    printf(END_SECT);
+
     return 0;
 }
 
@@ -99,7 +134,7 @@ Point3D* useNearest(Index *index, Point3D *pixel_rep) {
         d=1,
         row, col;
 
-    point2Index(index->extents, pixel_rep, &row, &col);
+    point2Index(index->config, pixel_rep, &row, &col);
 
     int minj = MAX(0, row-d),
         maxj = MIN(row+d, index->rows - 1),
@@ -153,20 +188,20 @@ void rasterize(Index *index, Image *image) {
     printf(END_SECT);
 }
 
-void calcImageSize(Extents *extents, int *rows, int *cols) {
-    assert(extents->lu_long < extents->rl_long && "Longitudes switched.");
-    assert(extents->lu_lat  > extents->rl_lat  && "Latitudes switched.");
+void calcImageSize(Config *config, int *rows, int *cols) {
+    assert(config->lu_long < config->rl_long && "Longitudes switched.");
+    assert(config->lu_lat  > config->rl_lat  && "Latitudes switched.");
 
     printf("Calculating image size ...\n");
-    printf("    Image extents: left  upper corner %6.2f %6.2f\n", extents->lu_long, extents->lu_lat);
-    printf("                   right lower corner %6.2f %6.2f\n", extents->rl_long, extents->rl_lat);
-    printf("    GSD: %6.2f metres.\n\n", extents->gsd);
+    printf("    Image extents: left  upper corner %6.2f %6.2f\n", config->lu_long, config->lu_lat);
+    printf("                   right lower corner %6.2f %6.2f\n", config->rl_long, config->rl_lat);
+    printf("    GSD: %6.2f metres.\n\n", config->gsd);
 
-    double hor = extents->rl_long - extents->lu_long;
-    double ver = extents->lu_lat  - extents->rl_lat;
+    double hor = config->rl_long - config->lu_long;
+    double ver = config->lu_lat  - config->rl_lat;
 
-    *rows = floor(hor / extents->gsd);
-    *cols = floor(ver / extents->gsd);
+    *rows = floor(hor / config->gsd);
+    *cols = floor(ver / config->gsd);
 
     printf("    Horizontal extent: %6.2f metres => %d cols.\n", hor, *cols);
     printf("    Vertical   extent: %6.2f metres => %d rows.\n", ver, *rows);
@@ -251,7 +286,7 @@ void readPointsFromFile(char *filename, Index *index) {
 
 void addPointToIndex(Index *index, Point3D *point) {
     int col,row;
-    point2Index(index->extents, point, &row, &col);
+    point2Index(index->config, point, &row, &col);
     assert(row < (index->rows) && col < (index->cols) && "col,row < cols,rows");
     PointNode **binstart = (index->nodes)+(row*index->cols)+col;
     addToBin(binstart, point);
@@ -276,9 +311,9 @@ void addToBin(PointNode **current, Point3D* point) {
     }
 }
 
-void point2Index(Extents *extents, Point3D *p, int *row, int *col) {
-    *row = floor((p->x - extents->lu_long) / extents->gsd);
-    *col = floor((p->y - extents->rl_lat) / extents->gsd);
+void point2Index(Config *config, Point3D *p, int *row, int *col) {
+    *row = floor((p->x - config->lu_long) / config->gsd);
+    *col = floor((p->y - config->rl_lat) / config->gsd);
     assert(*row >= 0 && *col >= 0 && "Row number positive.");
     // printf("    Point x=%4.2f y=%4.2f z=%4.2f -> row=%d col=%d.\n", p->x, p->y, p->z, *row, *col);
 }
@@ -286,9 +321,9 @@ void point2Index(Extents *extents, Point3D *p, int *row, int *col) {
 void pixel2Point(Image *image, int *row, int *col, Point3D *point) {
     float col_rel = (float)*col / image->cols;
     float row_rel = (float)*row / image->rows;
-    Extents *extents = image->extents;
-    point->x = extents->lu_long + (extents->rl_long - extents->lu_long)*col_rel;
-    point->y = extents->lu_lat  + (extents->rl_lat  - extents->lu_lat )*row_rel;
+    Config *config = image->config;
+    point->x = config->lu_long + (config->rl_long - config->lu_long)*col_rel;
+    point->y = config->lu_lat  + (config->rl_lat  - config->lu_lat )*row_rel;
     point->z = EMPTY_VAL;
     printf("pixel2Point: col=%d row=%d -> x=%f y=%f\n", *col, *row, point->x, point->y);
 }

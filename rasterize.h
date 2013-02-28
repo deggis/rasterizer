@@ -6,6 +6,7 @@
 #include <math.h>
 #include <assert.h>
 #include <sys/param.h>
+#include <glib-2.0/glib.h>
 
 #define EMPTY_VAL 0.0f
 
@@ -14,12 +15,6 @@ typedef struct {
     double y;
     double z;
 } Point3D;
-
-// typedef struct
-// {
-//     double x;
-//     double y;
-// } Point2D;
 
 typedef struct PointNode_t {
     Point3D p;
@@ -32,18 +27,19 @@ typedef struct {
     double rl_long;
     double rl_lat;
     double gsd; // in metres
-} Extents;
+    char *pointsFileName;
+} Config;
 
 typedef struct {
     float *pixels;
     int rows;
     int cols;
-    Extents *extents;
+    Config *config;
 } Image;
 
 typedef struct {
     PointNode **nodes;
-    Extents *extents;
+    Config *config;
     int rows;
     int cols;
 } Index;
@@ -60,9 +56,11 @@ void addToBin(PointNode **current, Point3D* point);
 
 void readPointsFromFile(char *filename, Index *index);
 
-void calcImageSize(Extents *extents, int *rows, int *cols);
+void readConfig(char *filename, Config *config);
 
-void point2Index(Extents *extents, Point3D *point, int *row, int *col);
+void calcImageSize(Config *config, int *rows, int *cols);
+
+void point2Index(Config *config, Point3D *point, int *row, int *col);
 
 void pixel2Point(Image *image, int *row, int *col, Point3D *point);
 
